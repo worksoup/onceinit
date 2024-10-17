@@ -59,6 +59,16 @@ where
     state: AtomicUsize,
     data: SyncUnsafeCell<Option<&'static T>>,
 }
+impl<T: ?Sized> Default for OnceInit<T>
+where
+    &'static T: Sized,
+    Self: Sized,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: ?Sized> OnceInit<T>
 where
     &'static T: Sized,
