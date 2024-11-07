@@ -50,11 +50,11 @@ pub enum OnceInitError {
 /// # `OnceInitState`
 /// 表示 [`OnceInit`] 内部数据的初始化状态。
 pub enum OnceInitState {
-    /// 数据已被初始化。
+    /// 数据未被初始化。
     UNINITIALIZED = 0,
     /// 数据正在初始化。
     INITIALIZING = 1,
-    /// 数据未被初始化。
+    /// 数据已被初始化。
     INITIALIZED = 2,
 }
 
