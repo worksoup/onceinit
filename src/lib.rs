@@ -35,15 +35,27 @@ use std::{
 /// # `OnceInitError`
 /// 读取或初始化 [`OnceInit`] 内部数据时可能返回该错误。
 pub enum OnceInitError {
+    /// 数据未被初始化。
+    #[error("data is uninitialized.")]
+    DataUninitialized,
     /// 数据正在初始化。
     #[error("data is initializing.")]
     DataInitializing,
     /// 数据已被初始化。
     #[error("data has already been initialized.")]
     DataInitialized,
+}
+
+#[repr(usize)]
+/// # `OnceInitState`
+/// 表示 [`OnceInit`] 内部数据的初始化状态。
+pub enum OnceInitState {
+    /// 数据已被初始化。
+    UNINITIALIZED = 0,
+    /// 数据正在初始化。
+    INITIALIZING = 1,
     /// 数据未被初始化。
-    #[error("data is uninitialized.")]
-    DataUninitialized,
+    INITIALIZED = 2,
 }
 
 const UNINITIALIZED: usize = 0;
@@ -94,6 +106,15 @@ impl<T: ?Sized> OnceInit<T> {
     /// ```
     pub unsafe fn get_data_unchecked(&self) -> &'static T {
         unsafe { (*self.data.get()).unwrap_unchecked() }
+    }
+    /// 返回数据状态，见 [`OnceInitState`].
+    pub fn get_state(&self) -> OnceInitState {
+        match self.state.load(Ordering::Acquire) {
+            UNINITIALIZED => OnceInitState::UNINITIALIZED,
+            INITIALIZING => OnceInitState::INITIALIZING,
+            INITIALIZED => OnceInitState::INITIALIZED,
+            _ => unreachable!(),
+        }
     }
     /// 返回内部数据，若未初始化，则返回 [`OnceInitError`].
     pub fn get_data(&self) -> Result<&'static T, OnceInitError> {
