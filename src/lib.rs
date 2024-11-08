@@ -96,14 +96,25 @@ where
 }
 
 impl<T: ?Sized> OnceInit<T> {
+    /// 返回内部数据，若未初始化，则返回 [`OnceInitError`].
+    ///
+    /// 若需要可变数据，请在内部使用具有内部可见性的数据结构，如 [`Mutex`](std::sync::Mutex) 等。
+    pub fn get_data(&self) -> Result<&'static T, OnceInitError> {
+        match self.state.load(Ordering::Acquire) {
+            INITIALIZED => Ok(unsafe { (*self.data.get()).unwrap_unchecked() }),
+            INITIALIZING => Err(OnceInitError::DataInitializing),
+            _ => Err(OnceInitError::DataUninitialized),
+        }
+    }
     /// 不检查是否初始化，直接返回内部数据。
+    ///
+    /// 若需要可变数据，请在内部使用具有内部可见性的数据结构，如 [`Mutex`](std::sync::Mutex) 等。
     ///
     /// # Safety
     ///
     /// 未初始化时，调用此函数会在内部的 [`None`] 值上调用 [`Option::unwrap_unchecked`], 造成[*未定义行为*]。
     ///
     /// [*未定义行为*]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
-    /// ```
     pub unsafe fn get_data_unchecked(&self) -> &'static T {
         unsafe { (*self.data.get()).unwrap_unchecked() }
     }
@@ -114,14 +125,6 @@ impl<T: ?Sized> OnceInit<T> {
             INITIALIZING => OnceInitState::INITIALIZING,
             INITIALIZED => OnceInitState::INITIALIZED,
             _ => unreachable!(),
-        }
-    }
-    /// 返回内部数据，若未初始化，则返回 [`OnceInitError`].
-    pub fn get_data(&self) -> Result<&'static T, OnceInitError> {
-        match self.state.load(Ordering::Acquire) {
-            INITIALIZED => Ok(unsafe { (*self.data.get()).unwrap_unchecked() }),
-            INITIALIZING => Err(OnceInitError::DataInitializing),
-            _ => Err(OnceInitError::DataUninitialized),
         }
     }
     fn set_data_internal<F>(&self, make_data: F) -> Result<(), OnceInitError>
