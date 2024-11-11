@@ -38,9 +38,6 @@ pub enum OnceInitError {
     /// 数据未被初始化。
     #[error("data is uninitialized.")]
     DataUninitialized,
-    /// 数据正在初始化。
-    #[error("data is initializing.")]
-    DataInitializing,
     /// 数据已被初始化。
     #[error("data has already been initialized.")]
     DataInitialized,
@@ -52,8 +49,6 @@ pub enum OnceInitError {
 pub enum OnceInitState {
     /// 数据未被初始化。
     UNINITIALIZED = 0,
-    /// 数据正在初始化。
-    INITIALIZING = 1,
     /// 数据已被初始化。
     INITIALIZED = 2,
 }
@@ -102,7 +97,12 @@ impl<T: ?Sized> OnceInit<T> {
     pub fn get_data(&self) -> Result<&'static T, OnceInitError> {
         match self.state.load(Ordering::Acquire) {
             INITIALIZED => Ok(unsafe { (*self.data.get()).unwrap_unchecked() }),
-            INITIALIZING => Err(OnceInitError::DataInitializing),
+            INITIALIZING => {
+                while self.state.load(Ordering::SeqCst) == INITIALIZING {
+                    std::hint::spin_loop()
+                }
+                Ok(unsafe { (*self.data.get()).unwrap_unchecked() })
+            }
             _ => Err(OnceInitError::DataUninitialized),
         }
     }
@@ -122,7 +122,12 @@ impl<T: ?Sized> OnceInit<T> {
     pub fn get_state(&self) -> OnceInitState {
         match self.state.load(Ordering::Acquire) {
             UNINITIALIZED => OnceInitState::UNINITIALIZED,
-            INITIALIZING => OnceInitState::INITIALIZING,
+            INITIALIZING => {
+                while self.state.load(Ordering::SeqCst) == INITIALIZING {
+                    std::hint::spin_loop()
+                }
+                OnceInitState::UNINITIALIZED
+            }
             INITIALIZED => OnceInitState::INITIALIZED,
             _ => unreachable!(),
         }
@@ -144,7 +149,7 @@ impl<T: ?Sized> OnceInit<T> {
                 while self.state.load(Ordering::SeqCst) == INITIALIZING {
                     std::hint::spin_loop()
                 }
-                Err(OnceInitError::DataInitializing)
+                Err(OnceInitError::DataInitialized)
             }
             INITIALIZED => Err(OnceInitError::DataInitialized),
             _ => {
