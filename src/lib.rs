@@ -20,10 +20,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#![feature(sync_unsafe_cell)]
 #![doc = include_str!("../README.md")]
 use std::{
-    cell::SyncUnsafeCell,
+    cell::UnsafeCell,
     ops::Deref,
     sync::atomic::{
         AtomicUsize,
@@ -59,13 +58,18 @@ const INITIALIZED: usize = 2;
 
 /// # `OnceInit`
 /// 仅可设置一次数据的类型。
+///
+/// 当 `T` 实现了 [`Sync`] 时，该类型也会实现 [`Sync`].
+/// [`Sync`] 是由内部原子类型的 `state` 和外部 api 共同保证的。
+/// 外部 api 保证，当 `state` 指示数据正在或已经初始化时，该类型不可变。
 pub struct OnceInit<T: ?Sized + 'static>
 where
     &'static T: Sized,
 {
     state: AtomicUsize,
-    data: SyncUnsafeCell<Option<&'static T>>,
+    data: UnsafeCell<Option<&'static T>>,
 }
+unsafe impl<T> Sync for OnceInit<T> where T: ?Sized + Sync {}
 impl<T: ?Sized> Default for OnceInit<T>
 where
     &'static T: Sized,
@@ -85,11 +89,10 @@ where
     pub const fn new() -> Self {
         Self {
             state: AtomicUsize::new(UNINITIALIZED),
-            data: SyncUnsafeCell::new(None),
+            data: UnsafeCell::new(None),
         }
     }
 }
-
 impl<T: ?Sized> OnceInit<T> {
     /// 返回内部数据，若未初始化，则返回 [`OnceInitError`].
     ///
