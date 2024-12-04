@@ -20,28 +20,41 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#![doc = include_str!("../README.md")]
-use std::{
-    cell::UnsafeCell,
-    ops::Deref,
-    sync::atomic::{
-        AtomicUsize,
-        Ordering,
-    },
-};
+# ![doc = include_str!("../README.md")]
+#![cfg_attr(feature = "no_std", no_std)]
+#[cfg(all(not(feature = "no_std"), test))]
+mod tests;
 
-#[derive(Debug, thiserror::Error)]
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+use ::core::{
+    cell::UnsafeCell,
+    fmt::{Display, Formatter},
+    ops::Deref,
+    sync::atomic::{AtomicUsize, Ordering},
+};
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
+
+#[derive(Debug)]
 /// # `OnceInitError`
 /// 读取或初始化 [`OnceInit`] 内部数据时可能返回该错误。
 pub enum OnceInitError {
     /// 数据未被初始化。
-    #[error("data is uninitialized.")]
     DataUninitialized,
     /// 数据已被初始化。
-    #[error("data has already been initialized.")]
     DataInitialized,
 }
 
+impl Display for OnceInitError {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        match self {
+            OnceInitError::DataUninitialized {} => f.write_str("data is uninitialized."),
+            OnceInitError::DataInitialized {} => f.write_str("data has already been initialized."),
+        }
+    }
+}
 #[repr(usize)]
 /// # `OnceInitState`
 /// 表示 [`OnceInit`] 内部数据的初始化状态。
@@ -102,12 +115,21 @@ impl<T: ?Sized> OnceInit<T> {
             INITIALIZED => Ok(unsafe { (*self.data.get()).unwrap_unchecked() }),
             INITIALIZING => {
                 while self.state.load(Ordering::SeqCst) == INITIALIZING {
-                    std::hint::spin_loop()
+                    core::hint::spin_loop()
                 }
                 Ok(unsafe { (*self.data.get()).unwrap_unchecked() })
             }
             _ => Err(OnceInitError::DataUninitialized),
         }
+    }
+    /// 返回内部数据，若未初始化，则返回 `<T as StaticDefault>::static_default()`.
+    ///
+    /// 需要 `T` 实现 [`StaticDefault`].
+    pub fn as_data(&self) -> &'static T
+    where
+        T: StaticDefault,
+    {
+        self.get_data().unwrap_or_else(|_| T::static_default())
     }
     /// 不检查是否初始化，直接返回内部数据。
     ///
@@ -127,7 +149,7 @@ impl<T: ?Sized> OnceInit<T> {
             UNINITIALIZED => OnceInitState::UNINITIALIZED,
             INITIALIZING => {
                 while self.state.load(Ordering::SeqCst) == INITIALIZING {
-                    std::hint::spin_loop()
+                    core::hint::spin_loop()
                 }
                 OnceInitState::UNINITIALIZED
             }
@@ -150,7 +172,7 @@ impl<T: ?Sized> OnceInit<T> {
         match old_state {
             INITIALIZING => {
                 while self.state.load(Ordering::SeqCst) == INITIALIZING {
-                    std::hint::spin_loop()
+                    core::hint::spin_loop()
                 }
                 Err(OnceInitError::DataInitialized)
             }
@@ -163,84 +185,39 @@ impl<T: ?Sized> OnceInit<T> {
         }
     }
     /// 设置内部数据，只可调用一次，成功则初始化完成，之后调用均会返回错误。
-    pub fn set_data(&self, preprocessor: &'static T) -> Result<(), OnceInitError> {
-        self.set_data_internal(|| preprocessor)
+    ///
+    /// 如果 `data` 不是 `'static` 的，请使用 [`set_boxed_data`](Self::set_boxed_data).
+    pub fn set_data(&self, data: &'static T) -> Result<(), OnceInitError> {
+        self.set_data_internal(|| data)
     }
     /// 设置内部数据，只可调用一次，成功则初始化完成，之后调用均会返回错误。
-    pub fn set_boxed_data(&self, preprocessor: Box<T>) -> Result<(), OnceInitError> {
-        self.set_data_internal(|| Box::leak(preprocessor))
+    #[cfg(any(feature = "alloc", not(feature = "no_std")))]
+    pub fn set_boxed_data(&self, data: Box<T>) -> Result<(), OnceInitError> {
+        self.set_data_internal(|| Box::leak(data))
     }
 }
-pub trait StaticDefault {
+/// # [`StaticDefault`]
+///
+/// 返回类型的 `'static` 生命周期引用。
+///
+/// ## Safety
+///
+/// 在实现该类型时，应当避免使用 [`Box::leak`], 这是因为该特型专为 [`OnceInit`] 设计，
+/// 且 `OnceInit` **不保证** [`static_default`](StaticDefault::static_default) 只被调用一次。
+///
+/// 若内部使用了 `Box::leak`, 则可能会造成大量内存泄漏。
+///
+/// 最好只为真正拥有静态变量的类型实现该特型。
+/// 如需使用 `Box::leak`, 请记得[初始化 `OnceInit`](OnceInit::set_data),
+/// 初始化后的 `OnceInit` 将不再调用 `static_default`.
+pub unsafe trait StaticDefault {
+    /// 返回类型的 `'static` 生命周期引用。
     fn static_default() -> &'static Self;
 }
 impl<T: ?Sized + StaticDefault> Deref for OnceInit<T> {
     type Target = T;
 
-    fn deref(&self) -> &Self::Target {
-        self.get_data().unwrap_or_else(|_| T::static_default())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    // log 门面库的类似实现。
-    mod log {
-        use crate::{
-            OnceInit,
-            StaticDefault,
-        };
-        pub trait Logger: Send + Sync {
-            fn log(&self, msg: &str);
-        }
-        pub static LOGGER: OnceInit<dyn Logger> = OnceInit::new();
-
-        // 只有 `T` 实现了 `StaticDefault`, `OnceInit<T>` 才会实现 `Deref<Target = T>`.
-        struct DefaultLogger;
-        impl Logger for DefaultLogger {
-            fn log(&self, _msg: &str) {
-                // do nothing.
-            }
-        }
-        impl StaticDefault for dyn Logger {
-            fn static_default() -> &'static Self {
-                static NOP: DefaultLogger = DefaultLogger;
-                &NOP
-            }
-        }
-    }
-    mod a_logger {
-        use crate::OnceInitError;
-        // 一个简单的 a_logger crate.
-        use super::log::{
-            Logger,
-            LOGGER,
-        };
-        pub struct ALogger;
-
-        impl Logger for ALogger {
-            fn log(&self, msg: &str) {
-                println!("{msg}");
-            }
-        }
-
-        impl ALogger {
-            pub fn init() -> Result<(), OnceInitError> {
-                LOGGER.set_boxed_data(Box::new(ALogger))
-            }
-        }
-    }
-    mod hello_world {
-        use crate::tests::log::LOGGER;
-
-        pub fn hello_world() {
-            LOGGER.log("Hello, world!");
-        }
-    }
-    #[test]
-    fn test_logger() {
-        a_logger::ALogger::init().unwrap();
-        hello_world::hello_world();
+    fn deref(&self) -> &'static Self::Target {
+        self.as_data()
     }
 }

@@ -23,7 +23,7 @@
 [package]
 name = "onceinit"
 edition = "2021"
-version = "0.0.5"
+version = "0.0.6"
 authors = ["worksoup"]
 license = "MIT"
 description = "仅可设置一次数据的类型。"
@@ -31,5 +31,9 @@ readme = "./README.md"
 documentation = "https://docs.rs/onceinit"
 repository = "https://github.com/worksoup/onceinit"
 
+[features]
+default = []
+no_std = []
+alloc = []
+
 [dependencies]
-thiserror = "2"
