@@ -30,6 +30,7 @@ extern crate alloc;
 
 use ::core::{
     cell::UnsafeCell,
+    error::Error,
     fmt::{Display, Formatter},
     ops::Deref,
     sync::atomic::{AtomicUsize, Ordering},
@@ -55,6 +56,7 @@ impl Display for OnceInitError {
         }
     }
 }
+impl Error for OnceInitError {}
 #[repr(usize)]
 /// # `OnceInitState`
 /// 表示 [`OnceInit`] 内部数据的初始化状态。
