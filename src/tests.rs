@@ -57,7 +57,7 @@ mod a_logger {
 
     impl ALogger {
         pub fn init() -> Result<(), OnceInitError> {
-            LOGGER.set_boxed(Box::new(ALogger))
+            LOGGER.init_boxed(Box::new(ALogger))
         }
     }
 }

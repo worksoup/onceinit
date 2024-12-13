@@ -162,7 +162,7 @@ impl<T: ?Sized> OnceInit<T> {
             _ => unreachable!(),
         }
     }
-    fn set_internal<F>(&self, make_data: F) -> Result<(), OnceInitError>
+    fn init_internal<F>(&self, make_data: F) -> Result<(), OnceInitError>
     where
         F: FnOnce() -> &'static T,
     {
@@ -189,18 +189,18 @@ impl<T: ?Sized> OnceInit<T> {
             }
         }
     }
-    /// 设置内部数据，只可调用一次，成功则初始化完成，之后调用均会返回错误。
+    /// 初始化内部数据，只可调用一次，成功则初始化完成，之后调用均会返回错误。
     ///
-    /// 如果 `data` 不是 `'static` 的，请使用 [`set_boxed_data`](Self::set_boxed).
+    /// 如果 `data` 不是 `'static` 的，请使用 [`init_boxed`](Self::init_boxed).
     #[inline]
-    pub fn set(&self, data: &'static T) -> Result<(), OnceInitError> {
-        self.set_internal(|| data)
+    pub fn init(&self, data: &'static T) -> Result<(), OnceInitError> {
+        self.init_internal(|| data)
     }
-    /// 设置内部数据，只可调用一次，成功则初始化完成，之后调用均会返回错误。
+    /// 初始化内部数据，只可调用一次，成功则初始化完成，之后调用均会返回错误。
     #[inline]
     #[cfg(any(feature = "alloc", not(feature = "no_std")))]
-    pub fn set_boxed(&self, data: Box<T>) -> Result<(), OnceInitError> {
-        self.set_internal(|| Box::leak(data))
+    pub fn init_boxed(&self, data: Box<T>) -> Result<(), OnceInitError> {
+        self.init_internal(|| Box::leak(data))
     }
 }
 unsafe impl<T> Sync for OnceInit<T> where T: ?Sized + Sync {}
@@ -237,7 +237,7 @@ impl<T: ?Sized + Debug> Debug for OnceInit<T> {
 /// 若内部使用了 `Box::leak`, 则可能会造成大量内存泄漏。
 ///
 /// 最好只为真正拥有静态变量的类型实现该特型。
-/// 如需使用 `Box::leak`, 请记得[初始化 `OnceInit`](OnceInit::set),
+/// 如需使用 `Box::leak`, 请记得[初始化 `OnceInit`](OnceInit::init),
 /// 初始化后的 `OnceInit` 将不再调用 `static_default`.
 pub unsafe trait StaticDefault {
     /// 返回类型的 `'static` 生命周期引用。
@@ -249,5 +249,48 @@ impl<T: ?Sized + StaticDefault> Deref for OnceInit<T> {
     #[inline]
     fn deref(&self) -> &'static Self::Target {
         self.get_or_default()
+    }
+}
+/// 指示拥有一个全局实例，但可能未初始化。
+pub trait UninitGlobalHolder<T: ?Sized> {
+    /// 初始化内部数据。
+    fn init(&self, data: &'static T) -> Result<(), OnceInitError>;
+    /// 初始化内部数据。
+    #[cfg(any(feature = "alloc", not(feature = "no_std")))]
+    fn init_boxed(&self, data: Box<T>) -> Result<(), OnceInitError>;
+}
+impl<T: ?Sized> UninitGlobalHolder<T> for OnceInit<T> {
+    /// 初始化内部数据，只可调用一次，成功则初始化完成，之后调用均会返回错误。
+    ///
+    /// 如果 `data` 不是 `'static` 的，请使用 [`init_boxed`](Self::init_boxed).
+    #[inline]
+    fn init(&self, data: &'static T) -> Result<(), OnceInitError> {
+        OnceInit::init(self, data)
+    }
+    /// 初始化内部数据，只可调用一次，成功则初始化完成，之后调用均会返回错误。
+    #[inline]
+    fn init_boxed(&self, data: Box<T>) -> Result<(), OnceInitError> {
+        OnceInit::init_boxed(self, data)
+    }
+}
+/// 一个可能有用的模式。
+///
+/// 该模式表示：类型 `T` 拥有一个全局实例，并被 `M` 包装，可以对其进行初始化。
+pub trait UninitGlobal<T: ?Sized, M: UninitGlobalHolder<T>> {
+    fn holder() -> &'static M;
+    #[inline]
+    fn init(data: &'static T) -> Result<(), OnceInitError>
+    where
+        M: 'static,
+    {
+        Ok(Self::holder().init(data)?)
+    }
+    #[inline]
+    #[cfg(any(feature = "alloc", not(feature = "no_std")))]
+    fn init_boxed(data: Box<T>) -> Result<(), OnceInitError>
+    where
+        M: 'static,
+    {
+        Ok(Self::holder().init_boxed(data)?)
     }
 }

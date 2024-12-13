@@ -23,7 +23,7 @@
 [package]
 name = "onceinit"
 edition = "2021"
-version = "0.0.8"
+version = "0.0.10"
 authors = ["worksoup"]
 license = "MIT"
 description = "仅可设置一次数据的类型。"
