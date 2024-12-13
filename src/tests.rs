@@ -26,7 +26,7 @@ mod log {
     pub trait Logger: Send + Sync {
         fn log(&self, msg: &str);
     }
-    pub static LOGGER: OnceInit<dyn Logger> = OnceInit::new();
+    pub static LOGGER: OnceInit<dyn Logger> = OnceInit::uninit();
 
     // 只有 `T` 实现了 `StaticDefault`, `OnceInit<T>` 才会实现 `Deref<Target = T>`.
     struct DefaultLogger;
@@ -57,7 +57,7 @@ mod a_logger {
 
     impl ALogger {
         pub fn init() -> Result<(), OnceInitError> {
-            LOGGER.set_boxed_data(Box::new(ALogger))
+            LOGGER.set_boxed(Box::new(ALogger))
         }
     }
 }
