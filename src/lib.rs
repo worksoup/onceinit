@@ -276,12 +276,12 @@ impl<T: ?Sized> UninitGlobalHolder<T> for OnceInit<T> {
 /// 一个可能有用的模式。
 ///
 /// 该模式表示：类型 `T` 拥有一个全局实例，并被 `M` 包装，可以对其进行初始化。
-pub trait UninitGlobal<T: ?Sized, M: UninitGlobalHolder<T>> {
+pub trait UninitGlobal<T: ?Sized, M> {
     fn holder() -> &'static M;
     #[inline]
     fn init(data: &'static T) -> Result<(), OnceInitError>
     where
-        M: 'static,
+        M: UninitGlobalHolder<T> + 'static,
     {
         Ok(Self::holder().init(data)?)
     }
@@ -289,7 +289,7 @@ pub trait UninitGlobal<T: ?Sized, M: UninitGlobalHolder<T>> {
     #[cfg(any(feature = "alloc", not(feature = "no_std")))]
     fn init_boxed(data: Box<T>) -> Result<(), OnceInitError>
     where
-        M: 'static,
+        M: UninitGlobalHolder<T> + 'static,
     {
         Ok(Self::holder().init_boxed(data)?)
     }
