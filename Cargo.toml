@@ -1,6 +1,6 @@
 # MIT License
 #
-# Copyright (c) 2024 worksoup <https://github.com/worksoup/>
+# Copyright (c) 2025 worksoup <https://github.com/worksoup/>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,7 +23,7 @@
 [package]
 name = "onceinit"
 edition = "2021"
-version = "0.0.11"
+version = "0.0.12"
 authors = ["worksoup"]
 license = "MIT"
 description = "仅可设置一次数据的类型。"

@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2024 worksoup <https://github.com/worksoup/>
+// Copyright (c) 2025 worksoup <https://github.com/worksoup/>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -50,10 +50,11 @@ pub enum OnceInitError {
 }
 
 impl Display for OnceInitError {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
-            OnceInitError::DataUninitialized {} => f.write_str("data is uninitialized."),
-            OnceInitError::DataInitialized {} => f.write_str("data has already been initialized."),
+            OnceInitError::DataUninitialized => f.write_str("data is uninitialized."),
+            OnceInitError::DataInitialized => f.write_str("data has already been initialized."),
         }
     }
 }
@@ -88,14 +89,13 @@ where
 }
 
 impl<T: ?Sized> OnceInit<T> {
-    pub const DEFAULT: Self = Self {
-        state: AtomicUsize::new(UNINITIALIZED),
-        data: UnsafeCell::new(None),
-    };
     /// 返回未初始化的 [`OnceInit`] 类型。
     #[inline]
     pub const fn uninit() -> Self {
-        Self::DEFAULT
+        Self {
+            state: AtomicUsize::new(UNINITIALIZED),
+            data: UnsafeCell::new(None),
+        }
     }
     /// 返回初始化过的 [`OnceInit`] 类型。
     #[inline]
@@ -204,9 +204,9 @@ impl<T: ?Sized> OnceInit<T> {
     }
 }
 unsafe impl<T> Sync for OnceInit<T> where T: ?Sized + Sync {}
-impl<T: ?Sized> Default for OnceInit<T>
+impl<T> Default for OnceInit<T>
 where
-    T: Sized + StaticDefault,
+    T: ?Sized + StaticDefault,
     Self: Sized,
 {
     #[inline]
@@ -283,7 +283,7 @@ pub trait UninitGlobal<T: ?Sized, M> {
     where
         M: UninitGlobalHolder<T> + 'static,
     {
-        Ok(Self::holder().init(data)?)
+        Self::holder().init(data)
     }
     #[inline]
     #[cfg(any(feature = "alloc", not(feature = "no_std")))]
@@ -291,6 +291,6 @@ pub trait UninitGlobal<T: ?Sized, M> {
     where
         M: UninitGlobalHolder<T> + 'static,
     {
-        Ok(Self::holder().init_boxed(data)?)
+        Self::holder().init_boxed(data)
     }
 }
